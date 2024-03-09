@@ -113,31 +113,34 @@ ctx = ssl.create_default_context()
 ctx.check_hostname = False
 ctx.verify_mode = ssl.CERT_NONE
 
-conn = sqlite3.connect('tuition.sqlite')
+conn = sqlite3.connect('universities_tuition.sqlite')
 cur = conn.cursor()
 
+cur.execute('''CREATE TABLE IF NOT EXISTS Years
+    (id INTEGER PRIMARY KEY AUTOINCREMENT, year TEXT, UNIQUE(year))''')
+
 cur.execute('''CREATE TABLE IF NOT EXISTS Universities
-    (id INTEGER PRIMARY KEY AUTOINCREMENT, id_university TEXT, year TEXT, name TEXT,
-     tuition TEXT)''')
+    (id INTEGER PRIMARY KEY AUTOINCREMENT, university_name TEXT, university_id TEXT, UNIQUE(university_id))''')
+
+cur.execute('''CREATE TABLE IF NOT EXISTS Tuition
+    (id INTEGER PRIMARY KEY AUTOINCREMENT, university_id INTEGER, year_id INTEGER, tuition TEXT,
+    FOREIGN KEY(university_id) REFERENCES Universities(id),
+    FOREIGN KEY(year_id) REFERENCES Years(id))''')
 
 count_records = 0
 count_universities = 0
 for university in universities:
-    conn.commit()
-
     url = university
     print("Retrieving", url)
     count_universities = count_universities + 1
 
     text = "None"
     try:
-        # Open with a timeout of 30 seconds
         document = urllib.request.urlopen(url, None, 30, context=ctx)
         if document.getcode() != 200:
             print("Error code=", document.getcode(), url)
             break
         if document.info().get('Content-Encoding') == 'gzip':
-            # Decompress the gzip-encoded content
             content = gzip.decompress(document.read())
         else:
             content = document.read()
@@ -157,24 +160,38 @@ for university in universities:
     print(url, len(text))
 
     try:
-        # Parse the JSON data
         data = json.loads(text)
         if 'data' in data:
             print("Data found in the response")
             for entry in data['data']:
-                id_year = entry.get('ID Year', None)
-                year = entry.get('Year', None)
-                state_tuition = entry.get('State Tuition', None)
-                university = entry.get('University', None)
-                id_university = entry.get('ID University', None)
-                # Insert the data into the database
-                cur.execute('''INSERT OR IGNORE INTO Universities
-                            (id_university, year, name, tuition)
-                            VALUES (?, ?, ?, ?)''',
-                            (id_university, year, university, state_tuition))
+                year = entry.get('Year')
+                university_name = entry.get('University')
+                university_id = entry.get('ID University')
+                tuition = entry.get('State Tuition')
+
+                # Insert into Years table if not exists
+                cur.execute('''INSERT OR IGNORE INTO Years (year) VALUES (?)''', (year,))
+
+                # Get year_id
+                cur.execute('''SELECT id FROM Years WHERE year = ?''', (year,))
+                year_id = cur.fetchone()[0]
+
+                # Insert into Universities table if not exists
+                cur.execute('''INSERT OR IGNORE INTO Universities (university_name, university_id) VALUES (?, ?)''', (university_name, university_id))
+
+                # Get university_id
+                cur.execute('''SELECT id FROM Universities WHERE university_id = ?''', (university_id,))
+                university_id = cur.fetchone()[0]
+
+                # Insert into Tuition table
+                cur.execute('''INSERT INTO Tuition (university_id, year_id, tuition) VALUES (?, ?, ?)''', (university_id, year_id, tuition))
                 count_records = count_records + 1
+            print("Data inserted into the database")
+            print("Records inserted:", count_records)
     except Exception as e:
         print("Failed to parse or insert data:", e)
+
+conn.commit()
 
 print("Done. ", count_universities, "universities processed.")
 print("Done. ", count_records, "records added to the database.")
