@@ -48,7 +48,7 @@ for (tuition_id, tuition) in list(tuitions.items()):
 
 years_list.sort()
 
-fhand = open('expensive_universities.js','w')
+fhand = open('expensive/expensive_universities.js','w')
 fhand.write("expensiveUniversities = [ ['Year'")
 for university in university_list:
     fhand.write(",'"+university+"'")
